@@ -82,6 +82,32 @@ func TestValidateStore(t *testing.T) {
 			wantErr: errInvalidAuthConfig,
 		},
 		{
+			name: "invalid auth: token and service account ref provided",
+			store: mkStore(func(s *esv1.SecretStore) {
+				nm := s.Spec.Provider.NebiusMysterybox
+				nm.Auth.Token = esmeta.SecretKeySelector{Name: "a", Key: "k"}
+				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "sa"}
+			}),
+			wantErr: errInvalidAuthConfig,
+		},
+		{
+			name: "invalid auth: service account ref missing iam service account id",
+			store: mkStore(func(s *esv1.SecretStore) {
+				nm := s.Spec.Provider.NebiusMysterybox
+				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "sa"}
+			}),
+			wantErr: errInvalidServiceAccountRefAuthConfig,
+		},
+		{
+			name: "invalid auth: iam service account id without service account ref",
+			store: mkStore(func(s *esv1.SecretStore) {
+				nm := s.Spec.Provider.NebiusMysterybox
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
+				nm.Auth.Token = esmeta.SecretKeySelector{Name: "tok", Key: "k"}
+			}),
+			wantErr: errInvalidIAMServiceAccountIDConfig,
+		},
+		{
 			name: "invalid token auth: missing key",
 			store: mkStore(func(s *esv1.SecretStore) {
 				nm := s.Spec.Provider.NebiusMysterybox
@@ -127,6 +153,15 @@ func TestValidateStore(t *testing.T) {
 				nm := s.Spec.Provider.NebiusMysterybox
 				nm.APIDomain = apiDomain
 				nm.Auth.ServiceAccountCreds = esmeta.SecretKeySelector{Name: "creds", Key: "k"}
+			}),
+		},
+		{
+			name: "valid: service account ref",
+			store: mkStore(func(s *esv1.SecretStore) {
+				nm := s.Spec.Provider.NebiusMysterybox
+				nm.APIDomain = apiDomain
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
+				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "wi-sa"}
 			}),
 		},
 		{
@@ -180,6 +215,16 @@ func TestValidateStore(t *testing.T) {
 				nm := s.Spec.Provider.NebiusMysterybox
 				nm.Auth.Token = esmeta.SecretKeySelector{Name: "tok", Key: "k"}
 				nm.CAProvider = &esv1.NebiusCAProvider{Certificate: esmeta.SecretKeySelector{Name: "ca", Key: "tls.crt", Namespace: &ns}}
+			}),
+			wantErr: utilsErrNamespaceNotAllowed,
+		},
+		{
+			name: "service account ref different namespace (namespaced store)",
+			store: mkStore(func(s *esv1.SecretStore) {
+				ns := otherNs
+				nm := s.Spec.Provider.NebiusMysterybox
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
+				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "wi-sa", Namespace: &ns}
 			}),
 			wantErr: utilsErrNamespaceNotAllowed,
 		},
@@ -255,6 +300,22 @@ func TestValidateStoreClusterScope(t *testing.T) {
 			name: "cluster: namespaced sa creds passes",
 			store: makeStore(func(nm *esv1.NebiusMysteryboxProvider) {
 				nm.Auth.ServiceAccountCreds = esmeta.SecretKeySelector{Name: "tok", Key: "k", Namespace: pointer.To("ns1")}
+			}),
+			wantErr: "",
+		},
+		{
+			name: "cluster: service account ref without namespace passes",
+			store: makeStore(func(nm *esv1.NebiusMysteryboxProvider) {
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
+				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "wi-sa"}
+			}),
+			wantErr: "",
+		},
+		{
+			name: "cluster: namespaced service account ref passes",
+			store: makeStore(func(nm *esv1.NebiusMysteryboxProvider) {
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
+				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "wi-sa", Namespace: pointer.To("ns1")}
 			}),
 			wantErr: "",
 		},

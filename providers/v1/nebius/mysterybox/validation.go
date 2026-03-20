@@ -40,6 +40,8 @@ const (
 	errInvalidAuthConfig                       = "invalid auth configuration: exactly one must be specified"
 	errInvalidTokenAuthConfig                  = "invalid token auth configuration: no secret key specified"
 	errInvalidSACredsAuthConfig                = "invalid ServiceAccount creds auth configuration: no secret key specified"
+	errInvalidServiceAccountRefAuthConfig      = "invalid service account ref auth configuration: iamServiceAccountID must be specified"
+	errInvalidIAMServiceAccountIDConfig        = "invalid service account ref auth configuration: iamServiceAccountID can only be used with serviceAccountRef"
 	errFailedToRetrieveToken                   = "failed to retrieve iam token by credentials: %w"
 	errMissingAPIDomain                        = "API domain must be set"
 	errInvalidAPIDomain                        = "API domain is not valid"
@@ -74,6 +76,11 @@ func (p *Provider) ValidateStore(store esv1.GenericStore) (admission.Warnings, e
 	}
 	if provider.Auth.ServiceAccountCreds.Name != "" {
 		selectors = append(selectors, &provider.Auth.ServiceAccountCreds)
+	}
+	if provider.Auth.ServiceAccountRef != nil {
+		if err := esutils.ValidateReferentServiceAccountSelector(store, *provider.Auth.ServiceAccountRef); err != nil {
+			return nil, err
+		}
 	}
 	if provider.CAProvider != nil {
 		err := validateCertificate(&provider.CAProvider.Certificate)
@@ -114,17 +121,38 @@ func getNebiusMysteryboxProvider(store esv1.GenericStore) (*esv1.NebiusMysterybo
 }
 
 func validateProviderAuth(provider *esv1.NebiusMysteryboxProvider) error {
-	if provider.Auth.Token.Name == "" && provider.Auth.ServiceAccountCreds.Name == "" {
+	hasToken := provider.Auth.Token.Name != ""
+	hasSACreds := provider.Auth.ServiceAccountCreds.Name != ""
+	hasServiceAccountRef := provider.Auth.ServiceAccountRef != nil
+
+	authMethodsCount := 0
+	if hasToken {
+		authMethodsCount++
+	}
+	if hasSACreds {
+		authMethodsCount++
+	}
+	if hasServiceAccountRef {
+		authMethodsCount++
+	}
+
+	if authMethodsCount == 0 {
 		return errors.New(errMissingAuthOptions)
 	}
-	if provider.Auth.Token.Name != "" && provider.Auth.ServiceAccountCreds.Name != "" {
+	if authMethodsCount > 1 {
 		return errors.New(errInvalidAuthConfig)
 	}
-	if provider.Auth.Token.Name != "" && provider.Auth.Token.Key == "" {
+	if hasToken && provider.Auth.Token.Key == "" {
 		return errors.New(errInvalidTokenAuthConfig)
 	}
-	if provider.Auth.ServiceAccountCreds.Name != "" && provider.Auth.ServiceAccountCreds.Key == "" {
+	if hasSACreds && provider.Auth.ServiceAccountCreds.Key == "" {
 		return errors.New(errInvalidSACredsAuthConfig)
+	}
+	if hasServiceAccountRef && strings.TrimSpace(provider.Auth.IAMServiceAccountID) == "" {
+		return errors.New(errInvalidServiceAccountRefAuthConfig)
+	}
+	if !hasServiceAccountRef && strings.TrimSpace(provider.Auth.IAMServiceAccountID) != "" {
+		return errors.New(errInvalidIAMServiceAccountIDConfig)
 	}
 	return nil
 }

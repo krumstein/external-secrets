@@ -36,6 +36,7 @@ import (
 	"github.com/external-secrets/external-secrets/providers/v1/nebius/common/sdk/iam"
 	"github.com/external-secrets/external-secrets/providers/v1/nebius/common/sdk/mysterybox"
 	"github.com/external-secrets/external-secrets/runtime/constants"
+	"github.com/external-secrets/external-secrets/runtime/esutils"
 	"github.com/external-secrets/external-secrets/runtime/esutils/resolvers"
 	"github.com/external-secrets/external-secrets/runtime/feature"
 	"github.com/external-secrets/external-secrets/runtime/metrics"
@@ -52,11 +53,16 @@ var (
 // NewMysteryboxClient is a function that describes how to create a Nebius MysteryBox client to interact within.
 type NewMysteryboxClient func(ctx context.Context, apiDomain string, caCertificate []byte) (mysterybox.Client, error)
 
+// ServiceAccountTokenFetcher fetches a Kubernetes service account token via the TokenRequest API.
+type ServiceAccountTokenFetcher func(ctx context.Context, serviceAccountRef esmeta.ServiceAccountSelector, namespace string) (string, error)
+
 // SecretsClientConfig holds configuration for interacting with.
 type SecretsClientConfig struct {
 	APIDomain           string
 	ServiceAccountCreds *esmeta.SecretKeySelector
 	Token               *esmeta.SecretKeySelector
+	ServiceAccountRef   *esmeta.ServiceAccountSelector
+	IAMServiceAccountID string
 	CACertificate       *esmeta.SecretKeySelector
 }
 
@@ -72,6 +78,7 @@ type Provider struct {
 	Logger                      logr.Logger
 	NewMysteryboxClient         NewMysteryboxClient
 	TokenGetter                 TokenGetter
+	ServiceAccountTokenFetcher  ServiceAccountTokenFetcher
 	mysteryboxClientsCache      *lru.Cache
 	tokenInitMutex              sync.Mutex
 	cacheInitMutex              sync.Mutex
@@ -148,7 +155,31 @@ func (p *Provider) getIamToken(ctx context.Context, config *SecretsClientConfig,
 		if err != nil {
 			return "", fmt.Errorf("read service account creds %s/%s: %w", namespace, config.ServiceAccountCreds.Name, err)
 		}
-		token, err := p.TokenGetter.GetToken(ctx, config.APIDomain, subjectCreds, caCert)
+		token, err := p.TokenGetter.GetToken(ctx, &iam.TokenRequest{
+			APIDomain:    config.APIDomain,
+			AuthType:     iam.TokenAuthTypeServiceAccountCreds,
+			SubjectCreds: subjectCreds,
+		}, caCert)
+		if err != nil {
+			return "", fmt.Errorf(errFailedToRetrieveToken, err)
+		}
+		return strings.TrimSpace(token), nil
+	}
+	if config.ServiceAccountRef != nil {
+		serviceAccountNamespace := resolveServiceAccountNamespace(store, namespace, *config.ServiceAccountRef)
+		actorToken, err := p.fetchServiceAccountToken(ctx, *config.ServiceAccountRef, serviceAccountNamespace)
+		if err != nil {
+			return "", fmt.Errorf("request Kubernetes service account token %s/%s: %w", serviceAccountNamespace, config.ServiceAccountRef.Name, err)
+		}
+		token, err := p.TokenGetter.GetToken(ctx, &iam.TokenRequest{
+			APIDomain:               config.APIDomain,
+			AuthType:                iam.TokenAuthTypeFederatedServiceAccount,
+			SubjectToken:            config.IAMServiceAccountID,
+			ActorToken:              strings.TrimSpace(actorToken),
+			ServiceAccountNamespace: serviceAccountNamespace,
+			ServiceAccountName:      config.ServiceAccountRef.Name,
+			ServiceAccountAudiences: append([]string(nil), config.ServiceAccountRef.Audiences...),
+		}, caCert)
 		if err != nil {
 			return "", fmt.Errorf(errFailedToRetrieveToken, err)
 		}
@@ -220,8 +251,31 @@ func parseConfig(store esv1.GenericStore) (*SecretsClientConfig, error) {
 		APIDomain:           strings.TrimSpace(nebiusMysteryboxProvider.APIDomain),
 		ServiceAccountCreds: &nebiusMysteryboxProvider.Auth.ServiceAccountCreds,
 		Token:               &nebiusMysteryboxProvider.Auth.Token,
+		ServiceAccountRef:   nebiusMysteryboxProvider.Auth.ServiceAccountRef,
+		IAMServiceAccountID: strings.TrimSpace(nebiusMysteryboxProvider.Auth.IAMServiceAccountID),
 		CACertificate:       caCertificate,
 	}, nil
+}
+
+func resolveServiceAccountNamespace(store esv1.GenericStore, namespace string, serviceAccountRef esmeta.ServiceAccountSelector) string {
+	if _, ok := store.(*esv1.ClusterSecretStore); ok {
+		if serviceAccountRef.Namespace != nil {
+			return *serviceAccountRef.Namespace
+		}
+		return namespace
+	}
+	if serviceAccountRef.Namespace != nil {
+		return *serviceAccountRef.Namespace
+	}
+	return namespace
+}
+
+func (p *Provider) fetchServiceAccountToken(ctx context.Context, serviceAccountRef esmeta.ServiceAccountSelector, namespace string) (string, error) {
+	fetcher := p.ServiceAccountTokenFetcher
+	if fetcher == nil {
+		fetcher = esutils.FetchServiceAccountToken
+	}
+	return fetcher(ctx, serviceAccountRef, namespace)
 }
 
 func newMysteryboxClient(ctx context.Context, apiDomain string, caCertificate []byte) (mysterybox.Client, error) {
@@ -291,8 +345,9 @@ func (p *Provider) initTokenGetter() error {
 // NewProvider creates a new Provider instance.
 func NewProvider() esv1.Provider {
 	return &Provider{
-		Logger:              log,
-		NewMysteryboxClient: newMysteryboxClient,
+		Logger:                     log,
+		NewMysteryboxClient:        newMysteryboxClient,
+		ServiceAccountTokenFetcher: esutils.FetchServiceAccountToken,
 	}
 }
 
