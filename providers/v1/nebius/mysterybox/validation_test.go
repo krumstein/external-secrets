@@ -91,6 +91,23 @@ func TestValidateStore(t *testing.T) {
 			wantErr: errInvalidAuthConfig,
 		},
 		{
+			name: "invalid auth: service account ref missing iam service account id",
+			store: mkStore(func(s *esv1.SecretStore) {
+				nm := s.Spec.Provider.NebiusMysterybox
+				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "sa"}
+			}),
+			wantErr: errInvalidServiceAccountRefAuthConfig,
+		},
+		{
+			name: "invalid auth: iam service account id without service account ref",
+			store: mkStore(func(s *esv1.SecretStore) {
+				nm := s.Spec.Provider.NebiusMysterybox
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
+				nm.Auth.Token = esmeta.SecretKeySelector{Name: "tok", Key: "k"}
+			}),
+			wantErr: errInvalidIAMServiceAccountIDConfig,
+		},
+		{
 			name: "invalid token auth: missing key",
 			store: mkStore(func(s *esv1.SecretStore) {
 				nm := s.Spec.Provider.NebiusMysterybox
@@ -143,6 +160,7 @@ func TestValidateStore(t *testing.T) {
 			store: mkStore(func(s *esv1.SecretStore) {
 				nm := s.Spec.Provider.NebiusMysterybox
 				nm.APIDomain = apiDomain
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
 				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "wi-sa"}
 			}),
 		},
@@ -205,6 +223,7 @@ func TestValidateStore(t *testing.T) {
 			store: mkStore(func(s *esv1.SecretStore) {
 				ns := otherNs
 				nm := s.Spec.Provider.NebiusMysterybox
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
 				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "wi-sa", Namespace: &ns}
 			}),
 			wantErr: utilsErrNamespaceNotAllowed,
@@ -287,6 +306,7 @@ func TestValidateStoreClusterScope(t *testing.T) {
 		{
 			name: "cluster: service account ref without namespace passes",
 			store: makeStore(func(nm *esv1.NebiusMysteryboxProvider) {
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
 				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "wi-sa"}
 			}),
 			wantErr: "",
@@ -294,6 +314,7 @@ func TestValidateStoreClusterScope(t *testing.T) {
 		{
 			name: "cluster: namespaced service account ref passes",
 			store: makeStore(func(nm *esv1.NebiusMysteryboxProvider) {
+				nm.Auth.IAMServiceAccountID = "nebius-sa-id"
 				nm.Auth.ServiceAccountRef = &esmeta.ServiceAccountSelector{Name: "wi-sa", Namespace: pointer.To("ns1")}
 			}),
 			wantErr: "",

@@ -5417,6 +5417,12 @@ spec:
                         auth:
                           description: Auth defines parameters to authenticate in MysteryBox
                           properties:
+                            iamServiceAccountID:
+                              description: |-
+                                IAMServiceAccountID is the Nebius IAM service account identifier that the
+                                federated Kubernetes service account should impersonate during token exchange.
+                                This field is required when serviceAccountRef is used.
+                              type: string
                             serviceAccountCredsSecretRef:
                               description: |-
                                 ServiceAccountCreds references a Kubernetes Secret key that contains a JSON
@@ -5517,6 +5523,10 @@ spec:
                           x-kubernetes-validations:
                             - message: exactly one of serviceAccountCredsSecretRef, tokenSecretRef or serviceAccountRef must be set
                               rule: (has(self.serviceAccountCredsSecretRef) && !has(self.tokenSecretRef) && !has(self.serviceAccountRef)) || (!has(self.serviceAccountCredsSecretRef) && has(self.tokenSecretRef) && !has(self.serviceAccountRef)) || (!has(self.serviceAccountCredsSecretRef) && !has(self.tokenSecretRef) && has(self.serviceAccountRef))
+                            - message: iamServiceAccountID must be set when serviceAccountRef is used
+                              rule: '!has(self.serviceAccountRef) || self.iamServiceAccountID != '''''
+                            - message: iamServiceAccountID can only be used with serviceAccountRef
+                              rule: has(self.serviceAccountRef) || !has(self.iamServiceAccountID)
                         caProvider:
                           description: The provider for the CA bundle to use to validate NebiusMysterybox server certificate.
                           properties:
@@ -17216,6 +17226,12 @@ spec:
                         auth:
                           description: Auth defines parameters to authenticate in MysteryBox
                           properties:
+                            iamServiceAccountID:
+                              description: |-
+                                IAMServiceAccountID is the Nebius IAM service account identifier that the
+                                federated Kubernetes service account should impersonate during token exchange.
+                                This field is required when serviceAccountRef is used.
+                              type: string
                             serviceAccountCredsSecretRef:
                               description: |-
                                 ServiceAccountCreds references a Kubernetes Secret key that contains a JSON
@@ -17316,6 +17332,10 @@ spec:
                           x-kubernetes-validations:
                             - message: exactly one of serviceAccountCredsSecretRef, tokenSecretRef or serviceAccountRef must be set
                               rule: (has(self.serviceAccountCredsSecretRef) && !has(self.tokenSecretRef) && !has(self.serviceAccountRef)) || (!has(self.serviceAccountCredsSecretRef) && has(self.tokenSecretRef) && !has(self.serviceAccountRef)) || (!has(self.serviceAccountCredsSecretRef) && !has(self.tokenSecretRef) && has(self.serviceAccountRef))
+                            - message: iamServiceAccountID must be set when serviceAccountRef is used
+                              rule: '!has(self.serviceAccountRef) || self.iamServiceAccountID != '''''
+                            - message: iamServiceAccountID can only be used with serviceAccountRef
+                              rule: has(self.serviceAccountRef) || !has(self.iamServiceAccountID)
                         caProvider:
                           description: The provider for the CA bundle to use to validate NebiusMysterybox server certificate.
                           properties:

@@ -466,7 +466,7 @@ func TestNewClient_AuthWithServiceAccountRef(t *testing.T) {
 		},
 	}
 
-	store := newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, "wi-sa", nil, []string{"aud-a"})
+	store := newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, "wi-sa", nil, "nebius-sa-id", []string{"aud-a"})
 	client, err := p.NewClient(ctx, store, k8sClient, namespace)
 	tassert.NoError(t, err)
 
@@ -481,7 +481,8 @@ func TestNewClient_AuthWithServiceAccountRef(t *testing.T) {
 	tassert.NotNil(t, tokenGetter.gotRequest)
 	tassert.Equal(t, iam.TokenAuthTypeFederatedServiceAccount, tokenGetter.gotRequest.AuthType)
 	tassert.Equal(t, apiDomain, tokenGetter.gotRequest.APIDomain)
-	tassert.Equal(t, "k8s-jwt", tokenGetter.gotRequest.SubjectToken)
+	tassert.Equal(t, "nebius-sa-id", tokenGetter.gotRequest.SubjectToken)
+	tassert.Equal(t, "k8s-jwt", tokenGetter.gotRequest.ActorToken)
 	tassert.Equal(t, namespace, tokenGetter.gotRequest.ServiceAccountNamespace)
 	tassert.Equal(t, "wi-sa", tokenGetter.gotRequest.ServiceAccountName)
 	tassert.Equal(t, []string{"aud-a"}, tokenGetter.gotRequest.ServiceAccountAudiences)
@@ -512,7 +513,7 @@ func TestNewClient_ServiceAccountRefTokenRequestError(t *testing.T) {
 		},
 	}
 
-	store := newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, "wi-sa", nil, nil)
+	store := newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, "wi-sa", nil, "nebius-sa-id", nil)
 	_, err = p.NewClient(ctx, store, k8sClient, namespace)
 	tassert.Error(t, err)
 	tassert.ErrorContains(t, err, fmt.Sprintf("request Kubernetes service account token %s/%s", namespace, "wi-sa"))
@@ -539,7 +540,7 @@ func TestNewClient_ServiceAccountRefTokenExchangeError(t *testing.T) {
 		},
 	}
 
-	store := newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, "wi-sa", nil, nil)
+	store := newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, "wi-sa", nil, "nebius-sa-id", nil)
 	_, err = p.NewClient(ctx, store, k8sClient, namespace)
 	tassert.Error(t, err)
 	tassert.ErrorContains(t, err, "failed to retrieve iam token by credentials")
@@ -559,19 +560,19 @@ func TestResolveServiceAccountNamespace(t *testing.T) {
 	}{
 		{
 			name:   "namespaced secret store uses caller namespace",
-			store:  newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, callerNamespace, "wi-sa", nil, nil),
+			store:  newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, callerNamespace, "wi-sa", nil, "nebius-sa-id", nil),
 			ref:    esmeta.ServiceAccountSelector{Name: "wi-sa"},
 			wantNS: callerNamespace,
 		},
 		{
 			name:   "cluster secret store falls back to caller namespace",
-			store:  newNebiusMysteryboxClusterSecretStoreWithServiceAccountRef(apiDomain, "wi-sa", nil, nil),
+			store:  newNebiusMysteryboxClusterSecretStoreWithServiceAccountRef(apiDomain, "wi-sa", nil, "nebius-sa-id", nil),
 			ref:    esmeta.ServiceAccountSelector{Name: "wi-sa"},
 			wantNS: callerNamespace,
 		},
 		{
 			name:   "cluster secret store uses explicit namespace",
-			store:  newNebiusMysteryboxClusterSecretStoreWithServiceAccountRef(apiDomain, "wi-sa", &explicitNamespace, nil),
+			store:  newNebiusMysteryboxClusterSecretStoreWithServiceAccountRef(apiDomain, "wi-sa", &explicitNamespace, "nebius-sa-id", nil),
 			ref:    esmeta.ServiceAccountSelector{Name: "wi-sa", Namespace: &explicitNamespace},
 			wantNS: explicitNamespace,
 		},
@@ -1039,7 +1040,7 @@ func newNebiusMysteryboxSecretStoreWithServiceAccountCreds(apiDomain, namespace,
 	}
 }
 
-func newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, serviceAccountName string, serviceAccountNamespace *string, audiences []string) esv1.GenericStore {
+func newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, serviceAccountName string, serviceAccountNamespace *string, iamServiceAccountID string, audiences []string) esv1.GenericStore {
 	return &esv1.SecretStore{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
@@ -1049,6 +1050,7 @@ func newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, s
 				NebiusMysterybox: &esv1.NebiusMysteryboxProvider{
 					APIDomain: apiDomain,
 					Auth: esv1.NebiusAuth{
+						IAMServiceAccountID: iamServiceAccountID,
 						ServiceAccountRef: &esmeta.ServiceAccountSelector{
 							Name:      serviceAccountName,
 							Namespace: serviceAccountNamespace,
@@ -1061,7 +1063,7 @@ func newNebiusMysteryboxSecretStoreWithServiceAccountRef(apiDomain, namespace, s
 	}
 }
 
-func newNebiusMysteryboxClusterSecretStoreWithServiceAccountRef(apiDomain, serviceAccountName string, serviceAccountNamespace *string, audiences []string) esv1.GenericStore {
+func newNebiusMysteryboxClusterSecretStoreWithServiceAccountRef(apiDomain, serviceAccountName string, serviceAccountNamespace *string, iamServiceAccountID string, audiences []string) esv1.GenericStore {
 	return &esv1.ClusterSecretStore{
 		TypeMeta: metav1.TypeMeta{
 			Kind: esv1.ClusterSecretStoreKind,
@@ -1071,6 +1073,7 @@ func newNebiusMysteryboxClusterSecretStoreWithServiceAccountRef(apiDomain, servi
 				NebiusMysterybox: &esv1.NebiusMysteryboxProvider{
 					APIDomain: apiDomain,
 					Auth: esv1.NebiusAuth{
+						IAMServiceAccountID: iamServiceAccountID,
 						ServiceAccountRef: &esmeta.ServiceAccountSelector{
 							Name:      serviceAccountName,
 							Namespace: serviceAccountNamespace,

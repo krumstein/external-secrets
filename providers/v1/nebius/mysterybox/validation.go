@@ -40,6 +40,8 @@ const (
 	errInvalidAuthConfig                       = "invalid auth configuration: exactly one must be specified"
 	errInvalidTokenAuthConfig                  = "invalid token auth configuration: no secret key specified"
 	errInvalidSACredsAuthConfig                = "invalid ServiceAccount creds auth configuration: no secret key specified"
+	errInvalidServiceAccountRefAuthConfig      = "invalid service account ref auth configuration: iamServiceAccountID must be specified"
+	errInvalidIAMServiceAccountIDConfig        = "invalid service account ref auth configuration: iamServiceAccountID can only be used with serviceAccountRef"
 	errFailedToRetrieveToken                   = "failed to retrieve iam token by credentials: %w"
 	errMissingAPIDomain                        = "API domain must be set"
 	errInvalidAPIDomain                        = "API domain is not valid"
@@ -145,6 +147,12 @@ func validateProviderAuth(provider *esv1.NebiusMysteryboxProvider) error {
 	}
 	if hasSACreds && provider.Auth.ServiceAccountCreds.Key == "" {
 		return errors.New(errInvalidSACredsAuthConfig)
+	}
+	if hasServiceAccountRef && strings.TrimSpace(provider.Auth.IAMServiceAccountID) == "" {
+		return errors.New(errInvalidServiceAccountRefAuthConfig)
+	}
+	if !hasServiceAccountRef && strings.TrimSpace(provider.Auth.IAMServiceAccountID) != "" {
+		return errors.New(errInvalidIAMServiceAccountIDConfig)
 	}
 	return nil
 }

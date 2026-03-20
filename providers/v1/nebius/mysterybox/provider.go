@@ -62,6 +62,7 @@ type SecretsClientConfig struct {
 	ServiceAccountCreds *esmeta.SecretKeySelector
 	Token               *esmeta.SecretKeySelector
 	ServiceAccountRef   *esmeta.ServiceAccountSelector
+	IAMServiceAccountID string
 	CACertificate       *esmeta.SecretKeySelector
 }
 
@@ -166,14 +167,15 @@ func (p *Provider) getIamToken(ctx context.Context, config *SecretsClientConfig,
 	}
 	if config.ServiceAccountRef != nil {
 		serviceAccountNamespace := resolveServiceAccountNamespace(store, namespace, *config.ServiceAccountRef)
-		subjectToken, err := p.fetchServiceAccountToken(ctx, *config.ServiceAccountRef, serviceAccountNamespace)
+		actorToken, err := p.fetchServiceAccountToken(ctx, *config.ServiceAccountRef, serviceAccountNamespace)
 		if err != nil {
 			return "", fmt.Errorf("request Kubernetes service account token %s/%s: %w", serviceAccountNamespace, config.ServiceAccountRef.Name, err)
 		}
 		token, err := p.TokenGetter.GetToken(ctx, &iam.TokenRequest{
 			APIDomain:               config.APIDomain,
 			AuthType:                iam.TokenAuthTypeFederatedServiceAccount,
-			SubjectToken:            strings.TrimSpace(subjectToken),
+			SubjectToken:            config.IAMServiceAccountID,
+			ActorToken:              strings.TrimSpace(actorToken),
 			ServiceAccountNamespace: serviceAccountNamespace,
 			ServiceAccountName:      config.ServiceAccountRef.Name,
 			ServiceAccountAudiences: append([]string(nil), config.ServiceAccountRef.Audiences...),
@@ -250,6 +252,7 @@ func parseConfig(store esv1.GenericStore) (*SecretsClientConfig, error) {
 		ServiceAccountCreds: &nebiusMysteryboxProvider.Auth.ServiceAccountCreds,
 		Token:               &nebiusMysteryboxProvider.Auth.Token,
 		ServiceAccountRef:   nebiusMysteryboxProvider.Auth.ServiceAccountRef,
+		IAMServiceAccountID: strings.TrimSpace(nebiusMysteryboxProvider.Auth.IAMServiceAccountID),
 		CACertificate:       caCertificate,
 	}, nil
 }

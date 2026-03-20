@@ -37,10 +37,12 @@ const (
 	errSubjectCredsCannotBeSigned = "invalid subject credentials: cannot be signed %w"
 	errInvalidTokenRequest        = "invalid token request"
 	errInvalidSubjectToken        = "invalid federated subject token: empty token"
+	errInvalidActorToken          = "invalid federated actor token: empty token"
 
-	tokenExchangeGrantType   = "urn:ietf:params:oauth:grant-type:token-exchange"
-	accessTokenRequestedType = "urn:ietf:params:oauth:token-type:access_token"
-	jwtSubjectTokenType      = "urn:ietf:params:oauth:token-type:jwt"
+	tokenExchangeGrantType     = "urn:ietf:params:oauth:grant-type:token-exchange"
+	accessTokenRequestedType   = "urn:ietf:params:oauth:token-type:access_token"
+	jwtSubjectTokenType        = "urn:ietf:params:oauth:token-type:jwt"
+	subjectIdentifierTokenType = "urn:nebius:params:oauth:token-type:subject_identifier"
 )
 
 // GrpcTokenExchanger is a client for exchanging credentials over gRPC to obtain IAM tokens.
@@ -106,11 +108,17 @@ func (t *GrpcTokenExchanger) buildExchangeTokenRequest(ctx context.Context, req 
 		if subjectToken == "" {
 			return nil, errors.New(errInvalidSubjectToken)
 		}
+		actorToken := strings.TrimSpace(req.ActorToken)
+		if actorToken == "" {
+			return nil, errors.New(errInvalidActorToken)
+		}
 		return &iampb.ExchangeTokenRequest{
 			GrantType:          tokenExchangeGrantType,
 			RequestedTokenType: accessTokenRequestedType,
 			SubjectToken:       subjectToken,
-			SubjectTokenType:   jwtSubjectTokenType,
+			SubjectTokenType:   subjectIdentifierTokenType,
+			ActorToken:         actorToken,
+			ActorTokenType:     jwtSubjectTokenType,
 		}, nil
 	default:
 		return nil, fmt.Errorf("%s: unsupported auth type %q", errInvalidTokenRequest, req.AuthType)

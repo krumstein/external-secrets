@@ -70,11 +70,12 @@ func serviceAccountCredsTokenRequest(apiDomain, subjectCreds string) *iam.TokenR
 	}
 }
 
-func federatedServiceAccountTokenRequest(apiDomain, subjectToken, namespace, name string, audiences ...string) *iam.TokenRequest {
+func federatedServiceAccountTokenRequest(apiDomain, subjectToken, actorToken, namespace, name string, audiences ...string) *iam.TokenRequest {
 	return &iam.TokenRequest{
 		APIDomain:               apiDomain,
 		AuthType:                iam.TokenAuthTypeFederatedServiceAccount,
 		SubjectToken:            subjectToken,
+		ActorToken:              actorToken,
 		ServiceAccountNamespace: namespace,
 		ServiceAccountName:      name,
 		ServiceAccountAudiences: audiences,
@@ -321,8 +322,8 @@ func TestGetToken_FederatedServiceAccountCacheKeyIgnoresRawJWT(t *testing.T) {
 	t.Parallel()
 	env := newTokenTestEnv(t)
 
-	reqA := federatedServiceAccountTokenRequest("api.example", "jwt-1", "ns-a", "sa-a", "aud-a")
-	reqB := federatedServiceAccountTokenRequest("api.example", "jwt-2", "ns-a", "sa-a", "aud-a")
+	reqA := federatedServiceAccountTokenRequest("api.example", "nebius-sa-a", "jwt-1", "ns-a", "sa-a", "aud-a")
+	reqB := federatedServiceAccountTokenRequest("api.example", "nebius-sa-a", "jwt-2", "ns-a", "sa-a", "aud-a")
 
 	token1, err := env.cachedTokenGetter.GetToken(env.ctx, reqA, nil)
 	tassert.NoError(t, err)
@@ -337,12 +338,15 @@ func TestGetToken_FederatedServiceAccountCacheKeySeparatesLogicalSources(t *test
 	t.Parallel()
 	env := newTokenTestEnv(t)
 
-	reqA := federatedServiceAccountTokenRequest("api.example", "jwt-1", "ns-a", "sa-a", "aud-a")
-	reqDifferentNamespace := federatedServiceAccountTokenRequest("api.example", "jwt-1", "ns-b", "sa-a", "aud-a")
-	reqDifferentName := federatedServiceAccountTokenRequest("api.example", "jwt-1", "ns-a", "sa-b", "aud-a")
-	reqDifferentAudience := federatedServiceAccountTokenRequest("api.example", "jwt-1", "ns-a", "sa-a", "aud-b")
+	reqA := federatedServiceAccountTokenRequest("api.example", "nebius-sa-a", "jwt-1", "ns-a", "sa-a", "aud-a")
+	reqDifferentSubject := federatedServiceAccountTokenRequest("api.example", "nebius-sa-b", "jwt-1", "ns-a", "sa-a", "aud-a")
+	reqDifferentNamespace := federatedServiceAccountTokenRequest("api.example", "nebius-sa-a", "jwt-1", "ns-b", "sa-a", "aud-a")
+	reqDifferentName := federatedServiceAccountTokenRequest("api.example", "nebius-sa-a", "jwt-1", "ns-a", "sa-b", "aud-a")
+	reqDifferentAudience := federatedServiceAccountTokenRequest("api.example", "nebius-sa-a", "jwt-1", "ns-a", "sa-a", "aud-b")
 
 	tokenA, err := env.cachedTokenGetter.GetToken(env.ctx, reqA, nil)
+	tassert.NoError(t, err)
+	tokenSubject, err := env.cachedTokenGetter.GetToken(env.ctx, reqDifferentSubject, nil)
 	tassert.NoError(t, err)
 	tokenNS, err := env.cachedTokenGetter.GetToken(env.ctx, reqDifferentNamespace, nil)
 	tassert.NoError(t, err)
@@ -351,8 +355,9 @@ func TestGetToken_FederatedServiceAccountCacheKeySeparatesLogicalSources(t *test
 	tokenAud, err := env.cachedTokenGetter.GetToken(env.ctx, reqDifferentAudience, nil)
 	tassert.NoError(t, err)
 
+	tassert.NotEqual(t, tokenA, tokenSubject)
 	tassert.NotEqual(t, tokenA, tokenNS)
 	tassert.NotEqual(t, tokenA, tokenName)
 	tassert.NotEqual(t, tokenA, tokenAud)
-	tassert.Equal(t, int64(4), env.fakeTokenExchanger.Calls.Load())
+	tassert.Equal(t, int64(5), env.fakeTokenExchanger.Calls.Load())
 }

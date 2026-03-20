@@ -160,12 +160,13 @@ func buildTokenCacheKey(req *iam.TokenRequest) (*tokenCacheKey, error) {
 			PrivateKeyHash:   HashBytes([]byte(parsedSubjectCreds.SubjectCredentials.PrivateKey)),
 		}, nil
 	case iam.TokenAuthTypeFederatedServiceAccount:
-		if req.ServiceAccountNamespace == "" || req.ServiceAccountName == "" {
+		if req.SubjectToken == "" || req.ServiceAccountNamespace == "" || req.ServiceAccountName == "" {
 			return nil, errors.New("invalid federated service account token request")
 		}
 		return &tokenCacheKey{
 			APIDomain:         req.APIDomain,
 			AuthType:          string(req.AuthType),
+			ServiceAccountID:  req.SubjectToken,
 			K8SNamespace:      req.ServiceAccountNamespace,
 			K8SServiceAccount: req.ServiceAccountName,
 			AudiencesHash:     HashBytes([]byte(strings.Join(req.ServiceAccountAudiences, "\x00"))),

@@ -45,8 +45,11 @@ type TokenRequest struct {
 	// SubjectCreds contains Nebius service account credentials JSON.
 	SubjectCreds string
 
-	// SubjectToken contains a subject token such as a Kubernetes service account JWT.
+	// SubjectToken contains the Nebius subject identifier to exchange for.
 	SubjectToken string
+
+	// ActorToken contains the Kubernetes service account JWT used for workload federation.
+	ActorToken string
 
 	ServiceAccountNamespace string
 	ServiceAccountName      string
